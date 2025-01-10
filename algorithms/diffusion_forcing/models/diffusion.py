@@ -313,6 +313,11 @@ class Diffusion(nn.Module):
         curr_noise_level = real_steps[curr_noise_level]
         next_noise_level = real_steps[next_noise_level]
 
+        # print("x.shape", x.shape)
+        # print("curr_noise_level", curr_noise_level)
+        # print("next_noise_level", next_noise_level)
+        # print("self.is_ddim_sampling", self.is_ddim_sampling)
+
         if self.is_ddim_sampling:
             return self.ddim_sample_step(
                 x=x,
@@ -395,6 +400,12 @@ class Diffusion(nn.Module):
             curr_noise_level,
         )
 
+        print("ddim_sample_step")
+        print("x.shape", x.shape)
+        print("curr_noise_level", curr_noise_level)
+        print("next_noise_level", next_noise_level)
+        print("clipped_curr_noise_level", clipped_curr_noise_level)
+
         # treating as stabilization would require us to scale with sqrt of alpha_cum
         orig_x = x.clone().detach()
         scaled_context = self.q_sample(
@@ -403,6 +414,9 @@ class Diffusion(nn.Module):
             noise=torch.zeros_like(x),
         )
         x = torch.where(self.add_shape_channels(curr_noise_level < 0), scaled_context, orig_x)
+
+        print("scaled_context.shape", scaled_context.shape)
+        print("x.shape", x.shape)
 
         alpha = self.alphas_cumprod[clipped_curr_noise_level]
         alpha_next = torch.where(
@@ -417,9 +431,23 @@ class Diffusion(nn.Module):
         )
         c = (1 - alpha_next - sigma**2).sqrt()
 
+        print("alpha.shape", alpha.shape)
+        print("alpha_next.shape", alpha_next.shape)
+        print("sigma.shape", sigma.shape)
+        print("c.shape", c.shape)
+
+        print("alpha", alpha)
+        print("alpha_next", alpha_next)
+        print("sigma", sigma)
+        print("c", c)
+
         alpha_next = self.add_shape_channels(alpha_next)
         c = self.add_shape_channels(c)
         sigma = self.add_shape_channels(sigma)
+
+        print("alpha_next.shape", alpha_next.shape)
+        print("c.shape", c.shape)
+        print("sigma.shape", sigma.shape)
 
         if guidance_fn is not None:
             with torch.enable_grad():
@@ -461,5 +489,8 @@ class Diffusion(nn.Module):
             orig_x,
             x_pred,
         )
+
+        print("mask.shape", mask.shape)
+        print("mask", mask)
 
         return x_pred

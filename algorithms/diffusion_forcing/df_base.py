@@ -92,18 +92,33 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, namespace="validation") -> STEP_OUTPUT:
+        # print(f"Validation step {batch_idx}")
+
         xs, conditions, masks = self._preprocess_batch(batch)
         n_frames, batch_size, *_ = xs.shape
         xs_pred = []
         curr_frame = 0
+
+        # print("xs.shape: ", xs.shape)
+        # print("len(conditions): ", len(conditions))
+        # print("masks.shape: ", masks.shape)
+
+        # print("conditions: ", conditions)
+        # print("masks: ", masks)
 
         # context
         n_context_frames = self.context_frames // self.frame_stack
         xs_pred = xs[:n_context_frames].clone()
         curr_frame += n_context_frames
 
+        # print("n_context_frames: ", n_context_frames)
+        # print("xs_pred.shape: ", xs_pred.shape)
+
         pbar = tqdm(total=n_frames, initial=curr_frame, desc="Sampling")
         while curr_frame < n_frames:
+            # print(f"Current frame: {curr_frame}")
+            # print(f"Total frames: {n_frames}")
+
             if self.chunk_size > 0:
                 horizon = min(n_frames - curr_frame, self.chunk_size)
             else:
@@ -140,6 +155,10 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
                 from_noise_levels = torch.from_numpy(from_noise_levels).to(self.device)
                 to_noise_levels = torch.from_numpy(to_noise_levels).to(self.device)
+
+                # print("Progress", curr_frame, m)
+                # print(from_noise_levels)
+                # print(to_noise_levels)
 
                 # update xs_pred by DDIM or DDPM sampling
                 # input frames within the sliding window
@@ -202,6 +221,9 @@ class DiffusionForcingBase(BasePytorchAlgo):
         for m in range(height):
             for t in range(horizon):
                 scheduling_matrix[m, t] = self.sampling_timesteps + int(t * uncertainty_scale) - m
+
+        # print("Scheduling matrix")
+        # print(scheduling_matrix)
 
         return np.clip(scheduling_matrix, 0, self.sampling_timesteps)
 
