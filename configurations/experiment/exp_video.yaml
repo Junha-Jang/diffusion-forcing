@@ -6,7 +6,7 @@ tasks: [training]
 training:
   lr: 8e-5
   precision: 16-mixed
-  batch_size: 8
+  batch_size: 2 #8
   max_epochs: -1
   max_steps: 200005
   checkpointing:
