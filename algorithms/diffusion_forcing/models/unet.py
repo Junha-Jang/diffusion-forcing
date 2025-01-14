@@ -12,6 +12,8 @@ from .resnet import ResBlock1d
 from .sin_emb import SinusoidalPosEmb, RandomOrLearnedSinusoidalPosEmb
 from .attend import Attend
 
+from mamba_ssm import Mamba
+from .vim import VisionMamba
 
 # small helper modules
 
@@ -377,14 +379,39 @@ class TransitionUnet(Unet):
         self.num_gru_layers = num_gru_layers
         self.self_condition = self_condition
         self.gru = Conv2dGRUCell(z_channel, z_channel) if num_gru_layers else None
+        self.vim = VisionMamba(
+            patch_size=16,
+            stride=8,
+            embed_dim=384,
+            depth=24,
+            rms_norm=True,
+            residual_in_fp32=True,
+            fused_add_norm=True,
+            final_pool_type='all',
+            if_abs_pos_embed=True,
+            if_rope=False,
+            if_rope_residual=False,
+            if_bimamba=True,
+            bimamba_type="v2",
+            if_cls_token=True,
+            if_divide_out=True,
+            use_middle_cls_token=True,
+        ).to("cuda")
+
+        # print("Conv2dGRUCell.__init__")
+        # print("self.in_channels:", self.in_channels)
+        # print("self.hidden_channels:", self.hidden_channels)
+        # print("self.kernel_size:", self.kernel_size)
+        # print("self.bias:", self.bias)
 
         if num_gru_layers > 1:
             raise NotImplementedError("num_gru_layers > 1 is not implemented yet for TransitionUnet.")
 
     def forward(self, x, t, z_cond, external_cond=None, x_self_cond=None):
         z_next = super().forward(x, t, z_cond, external_cond, x_self_cond)
-        if self.num_gru_layers:
-            z_next = self.gru(z_next, z_cond)
+        # if self.num_gru_layers:
+        #     z_next = self.gru(z_next, z_cond)
+        z_next = self.vim(z_next)
 
         return z_next
 
