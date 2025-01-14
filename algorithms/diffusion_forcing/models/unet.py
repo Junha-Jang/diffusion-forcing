@@ -381,8 +381,8 @@ class TransitionUnet(Unet):
         self.gru = Conv2dGRUCell(z_channel, z_channel) if num_gru_layers else None
         self.vim = VisionMamba(
             patch_size=16,
-            stride=8,
-            embed_dim=384,
+            stride=16,
+            embed_dim=256,
             depth=24,
             rms_norm=True,
             residual_in_fp32=True,
@@ -393,9 +393,9 @@ class TransitionUnet(Unet):
             if_rope_residual=False,
             if_bimamba=True,
             bimamba_type="v2",
-            if_cls_token=True,
+            if_cls_token=False,
             if_divide_out=True,
-            use_middle_cls_token=True,
+            use_middle_cls_token=False,
         ).to("cuda")
 
         # print("Conv2dGRUCell.__init__")
