@@ -25,6 +25,8 @@ from mamba_ssm.utils.hf import load_config_hf, load_state_dict_hf
 from .rope import *
 import random
 
+from einops import rearrange
+
 # try:
 #     from mamba_ssm.ops.triton.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 # except ImportError:
@@ -40,7 +42,7 @@ __all__ = [
 class PatchEmbed(nn.Module):
     """ 2D Image to Patch Embedding
     """
-    def __init__(self, img_size=128, patch_size=16, stride=16, in_chans=32, embed_dim=768, norm_layer=None, flatten=True):
+    def __init__(self, img_size=128, patch_size=16, stride=16, in_chans=32, embed_dim=256, norm_layer=None, flatten=True):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -64,7 +66,8 @@ class PatchEmbed(nn.Module):
         x = self.proj(x)
         # print("x.shape: ", x.shape)
         if self.flatten:
-            x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
+            # x = x.flatten(2).transpose(1, 2)  # BCHW -> BNC
+            x = rearrange(x, 'b e h w -> b (h w) e', h=self.grid_size[0], w=self.grid_size[1])
         # print("x.shape: ", x.shape)
         x = self.norm(x)
         # print("x.shape: ", x.shape)
@@ -323,7 +326,7 @@ class VisionMamba(nn.Module):
                 ft_seq_len=hw_seq_len
             )
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
-        self.proj = nn.Linear(self.num_features, channels * img_size * img_size)
+        self.proj = nn.Linear(self.num_features, patch_size * patch_size * channels)
 
 
         # TODO: release this comment
@@ -365,6 +368,7 @@ class VisionMamba(nn.Module):
         # original init
         self.patch_embed.apply(segm_init_weights)
         self.head.apply(segm_init_weights)
+        self.proj.apply(segm_init_weights)
         if if_abs_pos_embed:
             trunc_normal_(self.pos_embed, std=.02)
         if if_cls_token:
@@ -567,7 +571,6 @@ class VisionMamba(nn.Module):
     def forward(self, x, return_features=False, inference_params=None, if_random_cls_token_position=False, if_random_token_rank=False):
         # print("VisionMamba forward start")
         # print("x.shape: ", x.shape)
-        _, _, H, W = x.shape
         x = self.forward_features(x, inference_params, if_random_cls_token_position=if_random_cls_token_position, if_random_token_rank=if_random_token_rank)
         # print("x.shape: ", x.shape)
         
@@ -581,7 +584,7 @@ class VisionMamba(nn.Module):
 
         # print("vim!")
 
-        x = x.view(x.size(0), -1, H, W)
+        x = rearrange(x, 'b (h w) (p1 p2 c) -> b c (p1 h) (p2 w)', p1=16, p2=16, h=8, w=8)
 
         return x
 
@@ -655,8 +658,8 @@ class VisionMamba(nn.Module):
 if __name__ == "__main__":
     model = VisionMamba(
         patch_size=16,
-        stride=8,
-        embed_dim=384,
+        stride=16,
+        embed_dim=256,
         depth=24,
         rms_norm=True,
         residual_in_fp32=True,
@@ -667,12 +670,12 @@ if __name__ == "__main__":
         if_rope_residual=False,
         if_bimamba=True,
         bimamba_type="v2",
-        if_cls_token=True,
+        if_cls_token=False,
         if_divide_out=True,
-        use_middle_cls_token=True,
-    ).to("cuda")
+        use_middle_cls_token=False,
+    ).to("cuda:3")
     print(model)
-    x = torch.randn(1, 3, 224, 224).to("cuda")
+    x = torch.randn(4, 32, 128, 128).to("cuda:3")
     y = model(x)
     print(x.shape)
     print(y.shape)
