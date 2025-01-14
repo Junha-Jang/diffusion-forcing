@@ -52,8 +52,17 @@ class ConvRNNCell(nn.Module):
 class Conv2dGRUCell(ConvRNNCell):
     def __init__(self, in_channels, hidden_channels, kernel_size=3, bias=True):
         super(Conv2dGRUCell, self).__init__(3, in_channels, hidden_channels, kernel_size, bias)
+        # print("Conv2dGRUCell.__init__")
+        # print("self.in_channels:", self.in_channels)
+        # print("self.hidden_channels:", self.hidden_channels)
+        # print("self.kernel_size:", self.kernel_size)
+        # print("self.bias:", self.bias)
 
     def forward(self, input, hx):
+        # print("Conv2dGRUCell.forward")
+        # print("input.shape:", input.shape)
+        # print("hx.shape:", hx.shape)
+
         x_t = self.x2h(input)
         h_t = self.h2h(hx)
 
