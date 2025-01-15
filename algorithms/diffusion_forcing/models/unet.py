@@ -13,7 +13,7 @@ from .sin_emb import SinusoidalPosEmb, RandomOrLearnedSinusoidalPosEmb
 from .attend import Attend
 
 from mamba_ssm import Mamba
-from .vim import VisionMamba
+from .vim.vim import VisionMamba
 
 # small helper modules
 
