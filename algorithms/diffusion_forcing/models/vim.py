@@ -584,7 +584,7 @@ class VisionMamba(nn.Module):
 
         # print("vim!")
 
-        x = rearrange(x, 'b (h w) (p1 p2 c) -> b c (p1 h) (p2 w)', p1=16, p2=16, h=8, w=8)
+        x = rearrange(x, 'b (h w) (p1 p2 c) -> b c (h p1) (w p2)', p1=16, p2=16, h=8, w=8)
 
         return x
 
