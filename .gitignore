@@ -151,3 +151,6 @@ checkpoints
 # Pycharm setting
 .idea/
 data/*
+
+# ControlNet model
+.pth
