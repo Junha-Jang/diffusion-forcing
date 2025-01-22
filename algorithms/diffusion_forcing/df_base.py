@@ -20,7 +20,6 @@ from algorithms.common.base_pytorch_algo import BasePytorchAlgo
 from utils.logging_utils import get_validation_metrics_for_states
 from .models.diffusion_transition import DiffusionTransitionModel
 
-
 class DiffusionForcingBase(BasePytorchAlgo):
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg

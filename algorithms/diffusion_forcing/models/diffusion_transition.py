@@ -11,6 +11,16 @@ from .unet import TransitionUnet, TransitionMlp
 from .resnet import ResBlock2d
 from .utils import extract, default, linear_beta_schedule, cosine_beta_schedule, sigmoid_beta_schedule
 
+from .gru import Conv2dGRUCell
+
+# from ...controlnet.ldm.util import instantiate_from_config
+# from ...controlnet.cldm.model import create_model, load_state_dict
+# from ...controlnet.cldm.ddim_hacked import DDIMSampler
+from .unet import Upsample, Downsample
+
+# import einops
+from ...controlnet.controlnet import StableDiffusionModel
+
 
 ModelPrediction = namedtuple("ModelPrediction", ["pred_noise", "pred_x_start", "pred_z", "model_out"])
 
@@ -22,7 +32,7 @@ class DiffusionTransitionModel(nn.Module):
         self.x_shape = x_shape
         self.z_shape = z_shape
         self.external_cond_dim = external_cond_dim
-        self.mask_unet = cfg.mask_unet
+        # self.mask_unet = cfg.mask_unet
         self.num_gru_layers = cfg.num_gru_layers
         self.num_mlp_layers = cfg.num_mlp_layers
         self.timesteps = cfg.timesteps
@@ -52,18 +62,51 @@ class DiffusionTransitionModel(nn.Module):
         x_channel = self.x_shape[0]
         z_channel = self.z_shape[0]
         if len(self.x_shape) == 3:
-            self.model = TransitionUnet(
-                z_channel=z_channel,
-                x_channel=x_channel,
-                external_cond_dim=self.external_cond_dim,
-                network_size=self.network_size,
-                num_gru_layers=self.num_gru_layers,
-                self_condition=self.self_condition,
+            # self.model = TransitionUnet(
+            #     z_channel=z_channel,
+            #     x_channel=x_channel,
+            #     external_cond_dim=self.external_cond_dim,
+            #     network_size=self.network_size,
+            #     num_gru_layers=self.num_gru_layers,
+            #     self_condition=self.self_condition,
+            # )
+            self.model = StableDiffusionModel(
+                # cfg=self.cfg.model,
+                # z_channel=z_channel,
+                # x_channel=x_channel,
+                # external_cond_dim=self.external_cond_dim,
+                # network_size=self.network_size,
+                # num_gru_layers=self.num_gru_layers,
+                # self_condition=self.self_condition,
             )
+
+            # self.model = instantiate_from_config(self.cfg.model).cpu()
+            # self.model.load_state_dict(load_state_dict('./models/control_sd15_canny.pth', location='cuda'))
+            # self.model = self.model.cuda()
+            # self.ddim_sampler = DDIMSampler(self.model)
 
             self.x_from_z = nn.Sequential(
                 ResBlock2d(z_channel, x_channel),
                 nn.Conv2d(x_channel, x_channel, 1, padding=0),
+            )
+
+            self.upsample = nn.Sequential(
+                Upsample(x_channel, x_channel),
+                Upsample(x_channel, x_channel),
+            )
+            self.z_from_x = nn.Sequential(
+                ResBlock2d(x_channel, z_channel),
+                nn.Conv2d(z_channel, z_channel, 1, padding=0),
+            )
+            self.gru = Conv2dGRUCell(z_channel, z_channel)
+            self.c_from_z = nn.Sequential(
+                ResBlock2d(z_channel, x_channel),
+                nn.Conv2d(x_channel, x_channel, 1, padding=0),
+            )
+            # self.stable_diffusion = StableDiffusionModel()
+            self.downsample = nn.Sequential(
+                Downsample(x_channel, x_channel),
+                Downsample(x_channel, x_channel),
             )
 
         elif len(self.x_shape) == 1:
@@ -295,10 +338,73 @@ class DiffusionTransitionModel(nn.Module):
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def model_predictions(self, x, t, z_cond, external_cond=None, x_self_cond=None):
-        z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
-        model_output = self.x_from_z(z_next)
+        # z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
 
-        if self.objective == "pred_noise":
+        # print("z_next.dtype", z_next.dtype)
+        # print("z_next.shape", z_next.shape)
+        # print("z_next.max()", z_next.max())
+        # print("z_next.min()", z_next.min())
+
+        # model_output = self.x_from_z(z_next)
+
+        # print("model_output.dtype", model_output.dtype)
+        # print("model_output.shape", model_output.shape)
+        # print("model_output.max()", model_output.max())
+        # print("model_output.min()", model_output.min())
+        
+
+        # print("x.dtype", x.dtype)
+        # print("x.shape", x.shape)
+        # print("x.max()", x.max())
+        # print("x.min()", x.min())
+
+        # from ControlNet image_resize
+
+        # print("x.shape", x.shape)
+        z = self.z_from_x(x)
+        # print("z.shape", z.shape)
+        z_next = self.gru(z_cond, z)
+        # print("z_next.shape", z_next.shape)
+        c = self.c_from_z(z_next)
+        # print("c.shape", c.shape)
+
+        x_512 = self.upsample(x)
+        # print("x_512.shape", x_512.shape)
+        # x_512 = x_512.rearrange("b c h w -> b h w c")
+        c_512 = self.upsample(c)
+        # print("c_512.shape", c_512.shape)
+
+        x_64 = self.model.model.encode_first_stage(x_512).sample()
+        # print("x_64.shape", x_64.shape)
+
+        prompt='minecraft screenshot'
+        a_prompt='best quality, extremely detailed'
+        num_samples=x.shape[0]
+
+        c_concat = [c_512]
+        c_crossattn = [self.model.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
+        cond = {
+            "c_concat": c_concat,
+            "c_crossattn": c_crossattn
+        }
+
+        # print("t", t)
+        # print("c_crossattn[0].shape", c_crossattn[0].shape)
+
+        x_next_64 = self.model.model.apply_model(x_64, t, cond)
+        # print("x_next_64.shape", x_next_64.shape)
+        x_next_512 = self.model.model.decode_first_stage(x_next_64)
+        # print("x_next_512.shape", x_next_512.shape)
+        model_output = self.downsample(x_next_512)
+        # print("model_output.shape", model_output.shape)
+        # x_next.requires_grad = True
+        
+        # print("model_output.shape", model_output.shape)
+        # print("model_output.dtype", model_output.dtype)
+        # print("model_output.max()", model_output.max())
+        # print("model_output.min()", model_output.min())
+
+        if True: # self.objective == "pred_noise":
             pred_noise = torch.clamp(model_output, -self.clip_noise, self.clip_noise)
             x_start = self.predict_start_from_noise(x, t, pred_noise)
 
