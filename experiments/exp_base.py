@@ -181,7 +181,7 @@ class BaseLightningExperiment(BaseExperiment):
         trainer = pl.Trainer(
             accelerator="auto",
             logger=self.logger,
-            devices=[1],
+            devices="auto",
             strategy=DDPStrategy(find_unused_parameters=True) if torch.cuda.device_count() > 1 else "auto",
             callbacks=callbacks,
             gradient_clip_val=self.cfg.training.optim.gradient_clip_val,
@@ -223,7 +223,7 @@ class BaseLightningExperiment(BaseExperiment):
         trainer = pl.Trainer(
             accelerator="auto",
             logger=self.logger,
-            devices=[1],
+            devices="auto",
             strategy=DDPStrategy(find_unused_parameters=True) if torch.cuda.device_count() > 1 else "auto",
             callbacks=callbacks,
             limit_val_batches=self.cfg.validation.limit_batch,
@@ -252,7 +252,7 @@ class BaseLightningExperiment(BaseExperiment):
         trainer = pl.Trainer(
             accelerator="auto",
             logger=self.logger,
-            devices=[1],
+            devices="auto",
             strategy=DDPStrategy(find_unused_parameters=True) if torch.cuda.device_count() > 1 else "auto",
             callbacks=callbacks,
             limit_test_batches=self.cfg.test.limit_batch,
