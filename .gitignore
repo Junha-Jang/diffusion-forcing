@@ -153,4 +153,4 @@ checkpoints
 data/*
 
 # ControlNet model
-.pth
+*.pth
