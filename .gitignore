@@ -152,5 +152,13 @@ checkpoints
 .idea/
 data/*
 
+
+# Diffusion forcing model
+*.tar.gz
+
 # ControlNet model
 *.pth
+*.ckpt
+
+# ControlNet Dataset
+algorithms/controlnet/training/
