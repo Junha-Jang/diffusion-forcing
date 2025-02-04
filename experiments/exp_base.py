@@ -178,6 +178,8 @@ class BaseLightningExperiment(BaseExperiment):
             self.early_stopping_callback = EarlyStopping(**self.cfg.training.early_stopping)
             callbacks.append(self.early_stopping_callback)
 
+        torch.autograd.set_detect_anomaly(True)
+
         trainer = pl.Trainer(
             accelerator="auto",
             logger=self.logger,
@@ -197,6 +199,10 @@ class BaseLightningExperiment(BaseExperiment):
             max_steps=self.cfg.training.max_steps,
             max_time=self.cfg.training.max_time,
         )
+
+        # print("self.algo paremeters: ", [name for name, _ in self.algo.named_parameters()])
+        # for name, param in self.algo.named_parameters():
+        #     print(f"{name}: requires_grad={param.requires_grad}", end=", ")
 
         trainer.fit(
             self.algo,

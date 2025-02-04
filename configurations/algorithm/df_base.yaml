@@ -1,6 +1,6 @@
 defaults:
   - base_pytorch_algo
-  - cldm_v15
+  - cldm_v21
 
 x_shape: ${dataset.observation_shape}
 z_shape: [512]
