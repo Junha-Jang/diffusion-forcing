@@ -20,6 +20,11 @@ from algorithms.common.base_pytorch_algo import BasePytorchAlgo
 from utils.logging_utils import get_validation_metrics_for_states
 from .models.diffusion_transition import DiffusionTransitionModel
 
+# from algorithms.controlnet.ldm.models.autoencoder import AutoencoderKL
+# from algorithms.controlnet.ldm.models.diffusion.ddpm import LatentDiffusion
+from algorithms.controlnet.ldm.util import instantiate_from_config
+
+# Actually, z is condition, c / just for convinience
 class DiffusionForcingBase(BasePytorchAlgo):
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
@@ -51,6 +56,12 @@ class DiffusionForcingBase(BasePytorchAlgo):
         self.register_data_mean_std(self.cfg.data_mean, self.cfg.data_std)
         if self.learnable_init_z:
             self.init_z = nn.Parameter(torch.randn(list(self.z_shape)), requires_grad=True)
+        
+        # Reference: algorithms/controlnet/ldm/models/diffusion/ddpm.py - instantiate_first_stage
+        model = instantiate_from_config(self.cfg.model.params.first_stage_config)
+        self.autoencoder = model.eval()
+        for param in self.autoencoder.parameters():
+            param.requires_grad = False
 
     def configure_optimizers(self):
         # transition_params = list(self.transition_model.parameters())
@@ -114,13 +125,16 @@ class DiffusionForcingBase(BasePytorchAlgo):
         xs = self._normalize_x(xs)
         xs = rearrange(xs, "b (t fs) c ... -> t b (fs c) ...", fs=self.frame_stack).contiguous()
 
+        zs = torch.stack([self.autoencoder.encode(x).sample() for x in xs])
+
         if self.learnable_init_z:
             init_z = self.init_z[None].expand(batch_size, *self.z_shape)
         else:
             init_z = torch.zeros(batch_size, *self.z_shape)
             init_z = init_z.to(xs.device)
 
-        return xs, conditions, masks, init_z
+        # return xs, conditions, masks, init_z
+        return zs, conditions, masks, init_z
 
     def reweigh_loss(self, loss, weight=None):
         loss = rearrange(loss, "t b (fs c) ... -> t b fs c ...", fs=self.frame_stack)
@@ -166,6 +180,10 @@ class DiffusionForcingBase(BasePytorchAlgo):
                     "training/x_loss": x_loss,
                 }
             )
+
+        
+        xs = torch.stack([self.autoencoder.decode(x) for x in xs])
+        xs_pred = torch.stack([self.autoencoder.decode(x) for x in xs_pred])
 
         xs = rearrange(xs, "t b (fs c) ... -> (t fs) b c ...", fs=self.frame_stack)
         xs_pred = rearrange(xs_pred, "t b (fs c) ... -> (t fs) b c ...", fs=self.frame_stack)

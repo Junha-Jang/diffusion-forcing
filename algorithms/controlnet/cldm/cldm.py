@@ -281,11 +281,13 @@ class ControlNet(nn.Module):
     def make_zero_conv(self, channels):
         return TimestepEmbedSequential(zero_module(conv_nd(self.dims, channels, channels, 1, padding=0)))
 
-    def forward(self, x, hint, timesteps, context, **kwargs):
+    def forward(self, x, z, hint, timesteps, context, **kwargs):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
-        guided_hint = self.input_hint_block(hint, emb, context)
+        # guided_hint = self.input_hint_block(hint, emb, context)
+        z_next = self.input_hint_block(hint, emb, context)
+        guided_hint = z
 
         outs = []
 
@@ -302,7 +304,7 @@ class ControlNet(nn.Module):
         h = self.middle_block(h, emb, context)
         outs.append(self.middle_block_out(h, emb, context))
 
-        return outs
+        return outs, z_next
 
 
 class ControlLDM(LatentDiffusion):
@@ -325,7 +327,7 @@ class ControlLDM(LatentDiffusion):
         control = control.to(memory_format=torch.contiguous_format).float()
         return x, dict(c_crossattn=[c], c_concat=[control])
 
-    def apply_model(self, x_noisy, t, cond, *args, **kwargs):
+    def apply_model(self, x_noisy, t, z, cond, *args, **kwargs):
         assert isinstance(cond, dict)
         diffusion_model = self.model.diffusion_model
 
@@ -334,11 +336,11 @@ class ControlLDM(LatentDiffusion):
         if cond['c_concat'] is None:
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
         else:
-            control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+            control, z_next = self.control_model(x=x_noisy, z=z, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
             control = [c * scale for c, scale in zip(control, self.control_scales)]
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 
-        return eps
+        return eps, z_next
 
     @torch.no_grad()
     def get_unconditional_conditioning(self, N):
