@@ -53,9 +53,27 @@ class DiffusionForcingBase(BasePytorchAlgo):
             self.init_z = nn.Parameter(torch.randn(list(self.z_shape)), requires_grad=True)
 
     def configure_optimizers(self):
-        transition_params = list(self.transition_model.parameters())
+        # transition_params = list(self.transition_model.parameters())
+
+        # Reference from algorithms/controlnet/cldm/cldm.py - configure_optimizers
+        transition_model = self.transition_model.model.model
+
+        # print("Transition Model Parameters: ", [name for name, _ in transition_model.named_parameters()])
+
+        transition_params = list(transition_model.control_model.parameters())
+        # transition_named_params = dict(transition_model.control_model.named_parameters())
+        if not transition_model.sd_locked:
+            transition_params += list(transition_model.model.diffusion_model.output_blocks.parameters())
+            transition_params += list(transition_model.model.diffusion_model.out.parameters())
+            # transition_named_params.update(transition_model.model.diffusion_model.output_blocks.named_parameters())
+            # transition_named_params.update(transition_model.model.diffusion_model.out.named_parameters())
+
         if self.learnable_init_z:
             transition_params.append(self.init_z)
+            # transition_named_params["init_z"] = self.init_z
+
+        # print("DiffusionForcingBase Parameters: ", [name for name, _ in transition_named_params.items()])
+
         optimizer_dynamics = torch.optim.AdamW(
             transition_params, lr=self.cfg.lr, weight_decay=self.cfg.weight_decay, betas=self.cfg.optimizer_beta
         )

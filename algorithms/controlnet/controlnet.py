@@ -14,8 +14,10 @@ import torch.nn as nn
 class StableDiffusionModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.model_config_path='./algorithms/controlnet/models/cldm_v15.yaml'
-        self.model_weights_path='./algorithms/controlnet/models/control_sd15_canny.pth'
+        # self.model_config_path='./algorithms/controlnet/models/cldm_v15.yaml'
+        self.model_config_path='./algorithms/controlnet/models/cldm_v21.yaml'
+        # self.model_weights_path='./algorithms/controlnet/models/control_sd15_canny.pth'
+        self.model_weights_path='./algorithms/controlnet/models/control_sdn21_ini.ckpt'
 
         # Configs (for training)
         self.learning_rate = 1e-5
@@ -43,7 +45,7 @@ class StableDiffusionModel(nn.Module):
         a_prompt='best quality, extremely detailed',
         n_prompt='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality',
         num_samples=1,
-        image_resolution=512,
+        image_resolution=128,
         ddim_steps=2,
         guess_mode=False,
         strength=1.0,

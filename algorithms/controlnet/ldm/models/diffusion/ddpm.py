@@ -69,7 +69,8 @@ class DDPM(pl.LightningModule):
                  v_posterior=0.,  # weight for choosing posterior variance as sigma = (1-v) * beta_tilde + v * beta
                  l_simple_weight=1.,
                  conditioning_key=None,
-                 parameterization="eps",  # all assuming fixed variance schedules
+                #  parameterization="eps",  # all assuming fixed variance schedules
+                 parameterization="v",  # all assuming fixed variance schedules
                  scheduler_config=None,
                  use_positional_encodings=False,
                  learn_logvar=False,
@@ -817,7 +818,7 @@ class LatentDiffusion(DDPM):
             out.append(xc)
         return out
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
         if predict_cids:
             if z.dim() == 4:
@@ -826,10 +827,16 @@ class LatentDiffusion(DDPM):
             z = rearrange(z, 'b h w c -> b c h w').contiguous()
 
         z = 1. / self.scale_factor * z
+        # print("LatentDiffusion z.shape", z.shape)
+        # print("LatentDiffusion z.requires_grad", z.requires_grad)
+        # print("LatentDiffusion z.grad_fn", z.grad_fn)
         return self.first_stage_model.decode(z)
 
-    @torch.no_grad()
+    # @torch.no_grad()
     def encode_first_stage(self, x):
+        # print("LatentDiffusion x.shape", x.shape)
+        # print("LatentDiffusion x.requires_grad", x.requires_grad)
+        # print("LatentDiffusion x.grad_fn", x.grad_fn)
         return self.first_stage_model.encode(x)
 
     def shared_step(self, batch, **kwargs):

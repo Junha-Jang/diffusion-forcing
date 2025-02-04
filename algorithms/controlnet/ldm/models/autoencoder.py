@@ -80,14 +80,34 @@ class AutoencoderKL(pl.LightningModule):
             self.model_ema(self)
 
     def encode(self, x):
+        # print("AutoencoderKL x.shape", x.shape)
+        # print("AutoencoderKL x.requires_grad", x.requires_grad)
+        # print("AutoencoderKL x.grad_fn", x.grad_fn)
         h = self.encoder(x)
+        # print("AutoencoderKL h.shape", h.shape)
+        # print("AutoencoderKL h.requires_grad", h.requires_grad)
+        # print("AutoencoderKL h.grad_fn", h.grad_fn)
         moments = self.quant_conv(h)
+        # print("AutoencoderKL moments.shape", moments.shape)
+        # print("AutoencoderKL moments.requires_grad", moments.requires_grad)
+        # print("AutoencoderKL moments.grad_fn", moments.grad_fn)
         posterior = DiagonalGaussianDistribution(moments)
+        # print("posterior.shape", posterior.shape)
+        # print("AutoencoderKL posterior.requires_grad", posterior.requires_grad)
         return posterior
 
     def decode(self, z):
+        # print("AutoencoderKL z.shape", z.shape)
+        # print("AutoencoderKL z.requires_grad", z.requires_grad)
+        # print("AutoencoderKL z.grad_fn", z.grad_fn)
         z = self.post_quant_conv(z)
+        # print("AutoencoderKL z.shape", z.shape)
+        # print("AutoencoderKL z.requires_grad", z.requires_grad)
+        # print("AutoencoderKL z.grad_fn", z.grad_fn)
         dec = self.decoder(z)
+        # print("AutoencoderKL dec.shape", dec.shape)
+        # print("AutoencoderKL dec.requires_grad", dec.requires_grad)
+        # print("AutoencoderKL dec.grad_fn", dec.grad_fn)
         return dec
 
     def forward(self, input, sample_posterior=True):
