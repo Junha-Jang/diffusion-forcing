@@ -223,6 +223,7 @@ class DiffusionTransitionModel(nn.Module):
         self,
         z: torch.Tensor,
         x_next: torch.Tensor,
+        c_next: torch.Tensor,
         external_cond: Optional[torch.Tensor] = None,
         deterministic_t: Optional[Union[float, int]] = None,
         cum_snr: Optional[torch.Tensor] = None,
@@ -254,10 +255,10 @@ class DiffusionTransitionModel(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
-                x_self_cond = self.model_predictions(noised_x_next, t, z, external_cond=external_cond).pred_x_start
+                x_self_cond = self.model_predictions(noised_x_next, c_next, t, z, external_cond=external_cond).pred_x_start
                 x_self_cond.detach_()
 
-        model_pred = self.model_predictions(noised_x_next, t, z, external_cond=external_cond, x_self_cond=x_self_cond)
+        model_pred = self.model_predictions(noised_x_next, c_next, t, z, external_cond=external_cond, x_self_cond=x_self_cond)
         x_next_pred = model_pred.pred_x_start
         z_next_pred = model_pred.pred_z
 
@@ -337,7 +338,7 @@ class DiffusionTransitionModel(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def model_predictions(self, x, t, z_cond, external_cond=None, x_self_cond=None):
+    def model_predictions(self, x, c_next, t, z_cond, external_cond=None, x_self_cond=None):
     # def model_predictions(self, x, z, t, c, external_cond=None, x_self_cond=None):
     # def model_predictions(self, z, t, c, external_cond=None, x_self_cond=None):
         # # print("x.shape", x.shape) # torch.Size([4, 3, 128, 128])
@@ -419,14 +420,13 @@ class DiffusionTransitionModel(nn.Module):
         # # print("x_16.grad_fn", x_16.grad_fn) # None
 
         # x_128 = self.autoencoder.decode(x)
-        x_128 = self.model.model.decode_first_stage(x)
 
         prompt='minecraft screenshot'
         a_prompt='best quality, extremely detailed'
         num_samples=x.shape[0]
 
         # c_concat = [c_512]
-        c_concat = [x_128]
+        c_concat = [c_next]
         c_crossattn = [self.model.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
 
         cond = {
