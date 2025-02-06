@@ -393,7 +393,7 @@ class DiffusionTransitionModel(nn.Module):
         # print("z_next.requires_grad", z_next.requires_grad) # True
         # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f864c174d30>
         
-        c = x + self.c_from_z(z_next)
+        c = self.c_from_z(z_next)
 
         # print("c.shape", c.shape)
         # print("c.requires_grad", c.requires_grad) # True
