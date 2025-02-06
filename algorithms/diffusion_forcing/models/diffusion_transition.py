@@ -581,7 +581,7 @@ class DiffusionTransitionModel(nn.Module):
         )
 
     def ddim_sample_step(
-        self, x, z_cond, external_cond=None, index=0, return_x_start=False, return_guidance_const=False
+        self, x, c_next, z_cond, external_cond=None, index=0, return_x_start=False, return_guidance_const=False
     ):
         if index == 0:
             x = torch.clamp(x, -self.clip_noise, self.clip_noise)
@@ -604,7 +604,7 @@ class DiffusionTransitionModel(nn.Module):
         time, time_next = time_pairs[index]
         time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
         self_cond = None
-        model_pred = self.model_predictions(x, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond)
+        model_pred = self.model_predictions(x, c_next, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond)
         pred_noise = model_pred.pred_noise
         x_start = model_pred.pred_x_start
         pred_z = model_pred.pred_z

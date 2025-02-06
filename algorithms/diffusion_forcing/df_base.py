@@ -258,10 +258,15 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
         # context
         for t in range(0, self.context_frames // self.frame_stack):
-            x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            # x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            model = self.transition_model.model.model
+            x = model.get_first_stage_encoding(model.encode_first_stage(xs[t]))
+
             # z, x_next_pred, _, _ = self.transition_model(z, xs[t], conditions[t], deterministic_t=0)
             z, x_next_pred, _, _ = self.transition_model(z, x, xs[t], conditions[t], deterministic_t=0)
-            x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+
+            # x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+            # x_next_pred = model.decode_first_stage(x_next_pred)
             xs_pred.append(x_next_pred)
 
         # prediction
@@ -272,7 +277,8 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 horizon = n_frames - len(xs_pred)
 
             chunk = [
-                torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
+                # torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
+                torch.randn((batch_size, 4, 16, 16), device=self.device) for _ in range(horizon)
             ]
 
             pyramid_height = self.sampling_timesteps + int(horizon * self.uncertainty_scale)
@@ -290,8 +296,12 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 for t in range(horizon):
                     i = min(pyramid[m, t], self.sampling_timesteps - 1)
 
+                    c_next = model.decode_first_stage(xs_pred[t])
+                    # print("chunk[t].shape: ", chunk[t].shape)
+                    # print("c_next.shape: ", c_next.shape)
+                    # print("z_chunk.shape: ", z_chunk.shape)
                     chunk[t], z_chunk = self.transition_model.ddim_sample_step(
-                        chunk[t], z_chunk, conditions[len(xs_pred) + t], i
+                        chunk[t], c_next, z_chunk, conditions[len(xs_pred) + t], i
                     )
 
                     # theoretically, one shall feed new chunk[t] with last z_chunk into transition model again 
@@ -305,6 +315,7 @@ class DiffusionForcingBase(BasePytorchAlgo):
             z = z_chunk
             xs_pred += chunk
 
+        xs_pred = [model.decode_first_stage(x_pred) for x_pred in xs_pred]
         xs_pred = torch.stack(xs_pred)
         loss = F.mse_loss(xs_pred, xs, reduction="none")
         loss = self.reweigh_loss(loss, masks)
