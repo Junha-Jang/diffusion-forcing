@@ -19,7 +19,8 @@ from .gru import Conv2dGRUCell
 from .unet import Upsample, Downsample
 
 # import einops
-from ...controlnet.controlnet import StableDiffusionModel
+from ...controlnet.controlnet import ControlStableDiffusionModel
+from ...controlnet.stablediffusion import StableDiffusionModel
 
 
 ModelPrediction = namedtuple("ModelPrediction", ["pred_noise", "pred_x_start", "pred_z", "model_out"])
@@ -62,15 +63,16 @@ class DiffusionTransitionModel(nn.Module):
         x_channel = self.x_shape[0]
         z_channel = self.z_shape[0]
         if len(self.x_shape) == 3:
-            # self.model = TransitionUnet(
-            #     z_channel=z_channel,
-            #     x_channel=x_channel,
-            #     external_cond_dim=self.external_cond_dim,
-            #     network_size=self.network_size,
-            #     num_gru_layers=self.num_gru_layers,
-            #     self_condition=self.self_condition,
-            # )
-            self.model = StableDiffusionModel(
+            self.model = TransitionUnet(
+                z_channel=z_channel,
+                x_channel=x_channel,
+                external_cond_dim=self.external_cond_dim,
+                network_size=self.network_size,
+                num_gru_layers=self.num_gru_layers,
+                self_condition=self.self_condition,
+            )
+            self.model2 = ControlStableDiffusionModel(
+            # self.model = StableDiffusionModel(
                 # cfg=self.cfg.model,
                 # z_channel=z_channel,
                 # x_channel=x_channel,
@@ -85,10 +87,10 @@ class DiffusionTransitionModel(nn.Module):
             # self.model = self.model.cuda()
             # self.ddim_sampler = DDIMSampler(self.model)
 
-            # self.x_from_z = nn.Sequential(
-            #     ResBlock2d(z_channel, x_channel),
-            #     nn.Conv2d(x_channel, x_channel, 1, padding=0),
-            # )
+            self.x_from_z = nn.Sequential(
+                ResBlock2d(z_channel, x_channel),
+                nn.Conv2d(x_channel, x_channel, 1, padding=0),
+            )
 
             # self.upsample = nn.Sequential(
             #     Upsample(x_channel, x_channel),
@@ -223,7 +225,6 @@ class DiffusionTransitionModel(nn.Module):
         self,
         z: torch.Tensor,
         x_next: torch.Tensor,
-        c_next: torch.Tensor,
         external_cond: Optional[torch.Tensor] = None,
         deterministic_t: Optional[Union[float, int]] = None,
         cum_snr: Optional[torch.Tensor] = None,
@@ -255,10 +256,10 @@ class DiffusionTransitionModel(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
-                x_self_cond = self.model_predictions(noised_x_next, c_next, t, z, external_cond=external_cond).pred_x_start
+                x_self_cond = self.model_predictions(noised_x_next, t, z, external_cond=external_cond).pred_x_start
                 x_self_cond.detach_()
 
-        model_pred = self.model_predictions(noised_x_next, c_next, t, z, external_cond=external_cond, x_self_cond=x_self_cond)
+        model_pred = self.model_predictions(noised_x_next, t, z, external_cond=external_cond, x_self_cond=x_self_cond)
         x_next_pred = model_pred.pred_x_start
         z_next_pred = model_pred.pred_z
 
@@ -338,133 +339,135 @@ class DiffusionTransitionModel(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def model_predictions(self, x, c_next, t, z_cond, external_cond=None, x_self_cond=None):
+    def model_predictions(self, x, t, z_cond, external_cond=None, x_self_cond=None):
     # def model_predictions(self, x, z, t, c, external_cond=None, x_self_cond=None):
     # def model_predictions(self, z, t, c, external_cond=None, x_self_cond=None):
-        # # print("x.shape", x.shape) # torch.Size([4, 3, 128, 128])
-        # # print("x.requires_grad", x.requires_grad) # False
-        # # print("x.grad_fn", x.grad_fn) # None
+        # # # print("x.shape", x.shape) # torch.Size([4, 3, 128, 128])
+        # # # print("x.requires_grad", x.requires_grad) # False
+        # # # print("x.grad_fn", x.grad_fn) # None
 
-        # # print("z_cond.shape", z_cond.shape) # torch.Size([4, 32, 128, 128])
-        # # print("z_cond.requires_grad", z_cond.requires_grad) # True
-        # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f4be7366440>
+        # # # print("z_cond.shape", z_cond.shape) # torch.Size([4, 32, 128, 128])
+        # # # print("z_cond.requires_grad", z_cond.requires_grad) # True
+        # # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f4be7366440>
 
-        # # z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
+        # # # z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
         
-        # # print("z_next.shape", z_next.shape) # torch.Size([4, 32, 128, 128])
-        # # print("z_next.requires_grad", z_next.requires_grad) # True
-        # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f4be7366440>
+        # # # print("z_next.shape", z_next.shape) # torch.Size([4, 32, 128, 128])
+        # # # print("z_next.requires_grad", z_next.requires_grad) # True
+        # # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f4be7366440>
 
-        # # # print("z_next.dtype", z_next.dtype)
+        # # # # print("z_next.dtype", z_next.dtype)
+        # # # # print("z_next.shape", z_next.shape)
+        # # # # print("z_next.max()", z_next.max())
+        # # # # print("z_next.min()", z_next.min())
+
+        # # # model_output = self.x_from_z(z_next)
+
+        # # # print("model_output.shape", model_output.shape) # torch.Size([4, 3, 128, 128])
+        # # # print("model_output.requires_grad", model_output.requires_grad) # True
+        # # # print("model_output.grad_fn", model_output.grad_fn) # <ConvolutionBackward0 object at 0x7f4be7366440>
+
+        # # # # print("model_output.dtype", model_output.dtype)
+        # # # # print("model_output.shape", model_output.shape)
+        # # # # print("model_output.max()", model_output.max())
+        # # # # print("model_output.min()", model_output.min())
+        
+
+        # # # print("x.dtype", x.dtype)
+        # # # print("x.shape", x.shape)
+        # # # print("x.max()", x.max())
+        # # # print("x.min()", x.min())
+
+        # # # print("x.shape", x.shape)
+        # # # print("x.requires_grad", x.requires_grad) # False
+        # # # print("x.grad_fn", x.grad_fn) # None
+
+        # # # print("z_cond.requires_grad", z_cond.requires_grad) # True
+        # # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f864c174bb0>
+
+        # # z = self.z_from_x(x)
+
+        # # # print("z.shape", z.shape)
+        # # # print("z.requires_grad", z.requires_grad) # True
+        # # # print("z.grad_fn", z.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
+
+        # # z_next = self.gru(z_cond, z)
+
+        # # control_model = self.model.model.control_model
+
         # # # print("z_next.shape", z_next.shape)
-        # # # print("z_next.max()", z_next.max())
-        # # # print("z_next.min()", z_next.min())
-
-        # # model_output = self.x_from_z(z_next)
-
-        # # print("model_output.shape", model_output.shape) # torch.Size([4, 3, 128, 128])
-        # # print("model_output.requires_grad", model_output.requires_grad) # True
-        # # print("model_output.grad_fn", model_output.grad_fn) # <ConvolutionBackward0 object at 0x7f4be7366440>
-
-        # # # print("model_output.dtype", model_output.dtype)
-        # # # print("model_output.shape", model_output.shape)
-        # # # print("model_output.max()", model_output.max())
-        # # # print("model_output.min()", model_output.min())
+        # # # print("z_next.requires_grad", z_next.requires_grad) # True
+        # # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f864c174d30>
         
+        # # c = self.c_from_z(z_next)
 
-        # # print("x.dtype", x.dtype)
-        # # print("x.shape", x.shape)
-        # # print("x.max()", x.max())
-        # # print("x.min()", x.min())
+        # # # print("c.shape", c.shape)
+        # # # print("c.requires_grad", c.requires_grad) # True
+        # # # print("c.grad_fn", c.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
+        
+        # # # x_512 = self.upsample(x)
+        # # # print("x_512.shape", x_512.shape)
+        # # # x_512 = x_512.rearrange("b c h w -> b h w c")
+        # # # c_512 = self.upsample(c)
+        # # # print("c_512.shape", c_512.shape)
 
-        # # print("x.shape", x.shape)
-        # # print("x.requires_grad", x.requires_grad) # False
-        # # print("x.grad_fn", x.grad_fn) # None
+        # # # x_64 = self.model.model.encode_first_stage(x_512).sample()
+        # # # print("x_64.shape", x_64.shape)
 
-        # # print("z_cond.requires_grad", z_cond.requires_grad) # True
-        # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f864c174bb0>
+        # # x_16 = self.model.model.encode_first_stage(x).sample()
+        
+        # # # print("x_16.shape", x_16.shape)
+        # # # print("x_16.requires_grad", x_16.requires_grad) # False
+        # # # print("x_16.grad_fn", x_16.grad_fn) # None
 
-        # z = self.z_from_x(x)
+        # # x_128 = self.autoencoder.decode(x)
 
-        # # print("z.shape", z.shape)
-        # # print("z.requires_grad", z.requires_grad) # True
-        # # print("z.grad_fn", z.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
+        # prompt='minecraft screenshot'
+        # a_prompt='best quality, extremely detailed'
+        # num_samples=x.shape[0]
 
+        # # c_concat = [c_512]
+        # c_concat = [c_next]
+        # c_crossattn = [self.model.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
+
+        # cond = {
+        #     "c_concat": c_concat,
+        #     "c_crossattn": c_crossattn
+        # }
+
+        # # # print("t", t)
+        # # # print("c_crossattn[0].shape", c_crossattn[0].shape)
+
+        # # # x_next_64 = self.model.model.apply_model(x_64, t, cond)
+        # # # print("x_next_64.shape", x_next_64.shape)
+
+        # # x_next_16 = self.model.model.apply_model(x_16, t, cond)
+        # model_output, z = self.model.model.apply_model(x, t, z_cond, cond)
         # z_next = self.gru(z_cond, z)
 
-        # control_model = self.model.model.control_model
-
-        # # print("z_next.shape", z_next.shape)
-        # # print("z_next.requires_grad", z_next.requires_grad) # True
-        # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f864c174d30>
+        # # # print("x_next_16.requires_grad", x_next_16.requires_grad) # True
+        # # # print("x_next_16.grad_fn", x_next_16.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174c40>
         
-        # c = self.c_from_z(z_next)
-
-        # # print("c.shape", c.shape)
-        # # print("c.requires_grad", c.requires_grad) # True
-        # # print("c.grad_fn", c.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
+        # # # x_next_512 = self.model.model.decode_first_stage(x_next_64)
         
-        # # x_512 = self.upsample(x)
-        # # print("x_512.shape", x_512.shape)
-        # # x_512 = x_512.rearrange("b c h w -> b h w c")
-        # # c_512 = self.upsample(c)
-        # # print("c_512.shape", c_512.shape)
-
-        # # x_64 = self.model.model.encode_first_stage(x_512).sample()
-        # # print("x_64.shape", x_64.shape)
-
-        # x_16 = self.model.model.encode_first_stage(x).sample()
+        # # model_output = self.model.model.decode_first_stage(x_next_16)
+        # # # print("model_output.requires_grad", model_output.requires_grad) # False
+        # # # print("model_output.grad_fn", model_output.grad_fn) # None
         
-        # # print("x_16.shape", x_16.shape)
-        # # print("x_16.requires_grad", x_16.requires_grad) # False
-        # # print("x_16.grad_fn", x_16.grad_fn) # None
+        # # # self.objective = "pred_x0"
 
-        # x_128 = self.autoencoder.decode(x)
-
-        prompt='minecraft screenshot'
-        a_prompt='best quality, extremely detailed'
-        num_samples=x.shape[0]
-
-        # c_concat = [c_512]
-        c_concat = [c_next]
-        c_crossattn = [self.model.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
-
-        cond = {
-            "c_concat": c_concat,
-            "c_crossattn": c_crossattn
-        }
-
-        # # print("t", t)
-        # # print("c_crossattn[0].shape", c_crossattn[0].shape)
-
-        # # x_next_64 = self.model.model.apply_model(x_64, t, cond)
-        # # print("x_next_64.shape", x_next_64.shape)
-
-        # x_next_16 = self.model.model.apply_model(x_16, t, cond)
-        model_output, z = self.model.model.apply_model(x, t, z_cond, cond)
-        z_next = self.gru(z_cond, z)
-
-        # # print("x_next_16.requires_grad", x_next_16.requires_grad) # True
-        # # print("x_next_16.grad_fn", x_next_16.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174c40>
+        # # # print("x_next_512.shape", x_next_512.shape)
+        # # # model_output = self.downsample(x_next_512)
+        # # # print("model_output.shape", model_output.shape)
+        # # # x_next.requires_grad = True
         
-        # # x_next_512 = self.model.model.decode_first_stage(x_next_64)
-        
-        # model_output = self.model.model.decode_first_stage(x_next_16)
-        # # print("model_output.requires_grad", model_output.requires_grad) # False
-        # # print("model_output.grad_fn", model_output.grad_fn) # None
-        
-        # # self.objective = "pred_x0"
+        # # # print("model_output.shape", model_output.shape)
+        # # # print("model_output.dtype", model_output.dtype)
+        # # # print("model_output.max()", model_output.max())
+        # # # print("model_output.min()", model_output.min())
 
-        # # print("x_next_512.shape", x_next_512.shape)
-        # # model_output = self.downsample(x_next_512)
-        # # print("model_output.shape", model_output.shape)
-        # # x_next.requires_grad = True
-        
-        # # print("model_output.shape", model_output.shape)
-        # # print("model_output.dtype", model_output.dtype)
-        # # print("model_output.max()", model_output.max())
-        # # print("model_output.min()", model_output.min())
-
+        z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
+        model_output = self.x_from_z(z_next)
 
         if self.objective == "pred_noise":
             pred_noise = torch.clamp(model_output, -self.clip_noise, self.clip_noise)

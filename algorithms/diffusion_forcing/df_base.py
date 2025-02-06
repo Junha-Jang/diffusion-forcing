@@ -53,7 +53,8 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
     def _build_model(self):
         self.transition_model = DiffusionTransitionModel(
-            self.x_stacked_shape, self.z_shape, self.external_cond_dim, self.cfg.diffusion
+            # self.x_stacked_shape, self.z_shape, self.external_cond_dim, self.cfg.diffusion
+            (4, 16, 16), self.z_shape, self.external_cond_dim, self.cfg.diffusion
         )
         self.register_data_mean_std(self.cfg.data_mean, self.cfg.data_std)
         if self.learnable_init_z:
@@ -69,7 +70,7 @@ class DiffusionForcingBase(BasePytorchAlgo):
         # transition_params = list(self.transition_model.parameters())
 
         # Reference from algorithms/controlnet/cldm/cldm.py - configure_optimizers
-        transition_model = self.transition_model.model.model
+        transition_model = self.transition_model.model2.model
 
         # print("Transition Model Parameters: ", [name for name, _ in transition_model.named_parameters()])
 
@@ -131,7 +132,7 @@ class DiffusionForcingBase(BasePytorchAlgo):
         xs = self._normalize_x(xs)
         xs = rearrange(xs, "b (t fs) c ... -> t b (fs c) ...", fs=self.frame_stack).contiguous()
 
-        # zs = torch.stack([self.transition_model.model.model.encode_first_stage(x).sample() for x in xs])
+        # zs = torch.stack([self.transition_model.model2.model.encode_first_stage(x).sample() for x in xs])
 
         if self.learnable_init_z:
             init_z = self.init_z[None].expand(batch_size, *self.z_shape)
@@ -167,8 +168,8 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 deterministic_t = 0
 
             # x1 = torch.zeros(4, 3, 128, 128).cuda()
-            # x2 = self.transition_model.model.model.encode_first_stage(x1).sample()
-            # x3 = self.transition_model.model.model.decode_first_stage(x2)
+            # x2 = self.transition_model.model2.model.encode_first_stage(x1).sample()
+            # x3 = self.transition_model.model2.model.decode_first_stage(x2)
             # # x = self.autoencoder.encode(img).sample()
             # # y = self.autoencoder.decode(x)
 
@@ -194,16 +195,16 @@ class DiffusionForcingBase(BasePytorchAlgo):
             # cv2.imwrite(f'output_image_x2.png', x2[0])
             # cv2.imwrite(f'output_image_x3.png', x3[0])
 
-            x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            x = self.transition_model.model2.model.encode_first_stage(xs[t]).sample()
 
             # z_next, x_next_pred, l, cum_snr = self.transition_model(
             #     z, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
             # )
             z_next, x_next_pred, l, cum_snr = self.transition_model(
-                z, x, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
+                z, x, conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
             )
 
-            x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+            x_next_pred = self.transition_model.model2.model.decode_first_stage(x_next_pred)
 
             z = z_next
             xs_pred.append(x_next_pred)
@@ -252,10 +253,11 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
         # context
         for t in range(0, self.context_frames // self.frame_stack):
-            x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            x = self.transition_model.model2.model.encode_first_stage(xs[t]).sample()
             # z, x_next_pred, _, _ = self.transition_model(z, xs[t], conditions[t], deterministic_t=0)
-            z, x_next_pred, _, _ = self.transition_model(z, x, xs[t], conditions[t], deterministic_t=0)
-            x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+            # z, x_next_pred, _, _ = self.transition_model(z, x, xs[t], conditions[t], deterministic_t=0)
+            z, x_next_pred, _, _ = self.transition_model(z, x, conditions[t], deterministic_t=0)
+            x_next_pred = self.transition_model.model2.model.decode_first_stage(x_next_pred)
             xs_pred.append(x_next_pred)
 
         # prediction

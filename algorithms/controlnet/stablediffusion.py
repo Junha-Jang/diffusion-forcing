@@ -11,7 +11,7 @@ from .cldm.ddim_hacked import DDIMSampler
 
 import torch.nn as nn
 
-class ControlStableDiffusionModel(nn.Module):
+class StableDiffusionModel(nn.Module):
     def __init__(self):
         super().__init__()
         # self.model_config_path='./algorithms/controlnet/models/cldm_v15.yaml'
