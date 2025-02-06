@@ -194,7 +194,10 @@ class DiffusionForcingBase(BasePytorchAlgo):
             # cv2.imwrite(f'output_image_x2.png', x2[0])
             # cv2.imwrite(f'output_image_x3.png', x3[0])
 
-            x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            # x = self.transition_model.model.model.encode_first_stage(xs[t]).sample()
+            # x = self.transition_model.model.model.first_stage_model.encode(xs[t]).sample()
+            model = self.transition_model.model.model
+            x = model.get_first_stage_encoding(model.encode_first_stage(xs[t]))
 
             # z_next, x_next_pred, l, cum_snr = self.transition_model(
             #     z, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
@@ -203,7 +206,10 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 z, x, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
             )
 
-            x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+            # print("DiffusionForcingBase - Training Step")
+            # x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
+            # x_next_pred = self.transition_model.model.model.first_stage_model.decode(x_next_pred)
+            x_next_pred = model.decode_first_stage(x_next_pred)
 
             z = z_next
             xs_pred.append(x_next_pred)
