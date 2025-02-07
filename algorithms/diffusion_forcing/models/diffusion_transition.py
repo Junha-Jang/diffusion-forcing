@@ -95,10 +95,10 @@ class DiffusionTransitionModel(nn.Module):
             #     Upsample(x_channel, x_channel),
             #     Upsample(x_channel, x_channel),
             # )
-            # self.z_from_x = nn.Sequential(
-            #     ResBlock2d(x_channel, z_channel),
-            #     nn.Conv2d(z_channel, z_channel, 1, padding=0),
-            # )
+            self.z_from_x = nn.Sequential(
+                ResBlock2d(x_channel, z_channel),
+                nn.Conv2d(z_channel, z_channel, 1, padding=0),
+            )
             self.gru = Conv2dGRUCell(z_channel, z_channel)
             # self.c_from_z = nn.Sequential(
             #     ResBlock2d(z_channel, x_channel),
@@ -344,6 +344,7 @@ class DiffusionTransitionModel(nn.Module):
     # def model_predictions(self, z, t, c, external_cond=None, x_self_cond=None):
         control_ldm_model = self.model.model
         control_model = control_ldm_model.control_model
+        diffusion_model = control_ldm_model.model.diffusion_model
     
         prompt='minecraft screenshot'
         a_prompt='best quality, extremely detailed'
@@ -360,39 +361,21 @@ class DiffusionTransitionModel(nn.Module):
         hint = torch.cat(c_concat, 1)
         context = torch.cat(c_crossattn, 1)
         
-        guided_hint = control_model.input_hint_block(hint, emb, context)
+        # guided_hint = control_model.input_hint_block(hint, emb, context) # experiment code: *a**
+        # guided_hint = self.z_from_x(x) # experiment code: *b**
+        guided_hint = diffusion_model.input_blocks[0](x, emb, context) # experiment code: *c**
+        
         z_next = self.gru(guided_hint, z_cond)
         
         cond = {
             "c_concat": c_concat,
             "c_crossattn": c_crossattn,
-            # "guided_hint": guided_hint # experiment code: a***
-            "guided_hint": z_next # experiment code: b***
+            "guided_hint": guided_hint # experiment code: a***
+            # "guided_hint": z_next # experiment code: b***
         }
         
         model_output = self.model.model.apply_model(x, t, cond)
-
-        # # print("x_next_16.requires_grad", x_next_16.requires_grad) # True
-        # # print("x_next_16.grad_fn", x_next_16.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174c40>
         
-        # # x_next_512 = self.model.model.decode_first_stage(x_next_64)
-        
-        # model_output = self.model.model.decode_first_stage(x_next_16)
-        # # print("model_output.requires_grad", model_output.requires_grad) # False
-        # # print("model_output.grad_fn", model_output.grad_fn) # None
-        
-        # # self.objective = "pred_x0"
-
-        # # print("x_next_512.shape", x_next_512.shape)
-        # # model_output = self.downsample(x_next_512)
-        # # print("model_output.shape", model_output.shape)
-        # # x_next.requires_grad = True
-        
-        # # print("model_output.shape", model_output.shape)
-        # # print("model_output.dtype", model_output.dtype)
-        # # print("model_output.max()", model_output.max())
-        # # print("model_output.min()", model_output.min())
-
 
         if self.objective == "pred_noise":
             pred_noise = torch.clamp(model_output, -self.clip_noise, self.clip_noise)
