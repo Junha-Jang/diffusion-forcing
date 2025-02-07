@@ -370,7 +370,7 @@ class DiffusionTransitionModel(nn.Module):
         cond = {
             "c_concat": c_concat,
             "c_crossattn": c_crossattn,
-            "guided_hint": guided_hint # experiment code: a***
+            "guided_hint": z_cond # experiment code: a***
             # "guided_hint": z_next # experiment code: b***
         }
         
