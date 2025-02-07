@@ -20,6 +20,7 @@ from .unet import Upsample, Downsample
 
 # import einops
 from ...controlnet.controlnet import StableDiffusionModel
+from ...controlnet.ldm.modules.diffusionmodules.util import timestep_embedding
 
 
 ModelPrediction = namedtuple("ModelPrediction", ["pred_noise", "pred_x_start", "pred_z", "model_out"])
@@ -341,108 +342,35 @@ class DiffusionTransitionModel(nn.Module):
     def model_predictions(self, x, c_next, t, z_cond, external_cond=None, x_self_cond=None):
     # def model_predictions(self, x, z, t, c, external_cond=None, x_self_cond=None):
     # def model_predictions(self, z, t, c, external_cond=None, x_self_cond=None):
-        # # print("x.shape", x.shape) # torch.Size([4, 3, 128, 128])
-        # # print("x.requires_grad", x.requires_grad) # False
-        # # print("x.grad_fn", x.grad_fn) # None
-
-        # # print("z_cond.shape", z_cond.shape) # torch.Size([4, 32, 128, 128])
-        # # print("z_cond.requires_grad", z_cond.requires_grad) # True
-        # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f4be7366440>
-
-        # # z_next = self.model(x, t, z_cond, external_cond, x_self_cond)
-        
-        # # print("z_next.shape", z_next.shape) # torch.Size([4, 32, 128, 128])
-        # # print("z_next.requires_grad", z_next.requires_grad) # True
-        # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f4be7366440>
-
-        # # # print("z_next.dtype", z_next.dtype)
-        # # # print("z_next.shape", z_next.shape)
-        # # # print("z_next.max()", z_next.max())
-        # # # print("z_next.min()", z_next.min())
-
-        # # model_output = self.x_from_z(z_next)
-
-        # # print("model_output.shape", model_output.shape) # torch.Size([4, 3, 128, 128])
-        # # print("model_output.requires_grad", model_output.requires_grad) # True
-        # # print("model_output.grad_fn", model_output.grad_fn) # <ConvolutionBackward0 object at 0x7f4be7366440>
-
-        # # # print("model_output.dtype", model_output.dtype)
-        # # # print("model_output.shape", model_output.shape)
-        # # # print("model_output.max()", model_output.max())
-        # # # print("model_output.min()", model_output.min())
-        
-
-        # # print("x.dtype", x.dtype)
-        # # print("x.shape", x.shape)
-        # # print("x.max()", x.max())
-        # # print("x.min()", x.min())
-
-        # # print("x.shape", x.shape)
-        # # print("x.requires_grad", x.requires_grad) # False
-        # # print("x.grad_fn", x.grad_fn) # None
-
-        # # print("z_cond.requires_grad", z_cond.requires_grad) # True
-        # # print("z_cond.grad_fn", z_cond.grad_fn) # <ExpandBackward0 object at 0x7f864c174bb0>
-
-        # z = self.z_from_x(x)
-
-        # # print("z.shape", z.shape)
-        # # print("z.requires_grad", z.requires_grad) # True
-        # # print("z.grad_fn", z.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
-
-        # z_next = self.gru(z_cond, z)
-
-        # control_model = self.model.model.control_model
-
-        # # print("z_next.shape", z_next.shape)
-        # # print("z_next.requires_grad", z_next.requires_grad) # True
-        # # print("z_next.grad_fn", z_next.grad_fn) # <AddBackward0 object at 0x7f864c174d30>
-        
-        # c = self.c_from_z(z_next)
-
-        # # print("c.shape", c.shape)
-        # # print("c.requires_grad", c.requires_grad) # True
-        # # print("c.grad_fn", c.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174d30>
-        
-        # # x_512 = self.upsample(x)
-        # # print("x_512.shape", x_512.shape)
-        # # x_512 = x_512.rearrange("b c h w -> b h w c")
-        # # c_512 = self.upsample(c)
-        # # print("c_512.shape", c_512.shape)
-
-        # # x_64 = self.model.model.encode_first_stage(x_512).sample()
-        # # print("x_64.shape", x_64.shape)
-
-        # x_16 = self.model.model.encode_first_stage(x).sample()
-        
-        # # print("x_16.shape", x_16.shape)
-        # # print("x_16.requires_grad", x_16.requires_grad) # False
-        # # print("x_16.grad_fn", x_16.grad_fn) # None
-
-        # x_128 = self.autoencoder.decode(x)
-
+        control_ldm_model = self.model.model
+        control_model = control_ldm_model.control_model
+    
         prompt='minecraft screenshot'
         a_prompt='best quality, extremely detailed'
         num_samples=x.shape[0]
 
-        # c_concat = [c_512]
         c_concat = [c_next]
-        c_crossattn = [self.model.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
+        c_crossattn = [control_ldm_model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
 
+        # Reference 1: algorithms/controlnet/cldm/cldm.py - ControlLDM apply_model
+        # Reference 2: algorithms/controlnet/cldm/cldm.py - ControlNet forward
+        t_emb = timestep_embedding(t, control_model.model_channels, repeat_only=False)
+        emb = control_model.time_embed(t_emb)
+
+        hint = torch.cat(c_concat, 1)
+        context = torch.cat(c_crossattn, 1)
+        
+        guided_hint = control_model.input_hint_block(hint, emb, context)
+        z_next = self.gru(guided_hint, z_cond)
+        
         cond = {
             "c_concat": c_concat,
-            "c_crossattn": c_crossattn
+            "c_crossattn": c_crossattn,
+            # "guided_hint": guided_hint # experiment code: a***
+            "guided_hint": z_next # experiment code: b***
         }
-
-        # # print("t", t)
-        # # print("c_crossattn[0].shape", c_crossattn[0].shape)
-
-        # # x_next_64 = self.model.model.apply_model(x_64, t, cond)
-        # # print("x_next_64.shape", x_next_64.shape)
-
-        # x_next_16 = self.model.model.apply_model(x_16, t, cond)
-        model_output, z = self.model.model.apply_model(x, t, z_cond, cond)
-        z_next = self.gru(z_cond, z)
+        
+        model_output = self.model.model.apply_model(x, t, cond)
 
         # # print("x_next_16.requires_grad", x_next_16.requires_grad) # True
         # # print("x_next_16.grad_fn", x_next_16.grad_fn) # <ConvolutionBackward0 object at 0x7f864c174c40>
