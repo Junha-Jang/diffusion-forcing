@@ -361,9 +361,9 @@ class DiffusionTransitionModel(nn.Module):
         hint = torch.cat(c_concat, 1)
         context = torch.cat(c_crossattn, 1)
         
-        # guided_hint = control_model.input_hint_block(hint, emb, context) # experiment code: *a**
+        guided_hint = control_model.input_hint_block(hint, emb, context) # experiment code: *a**
         # guided_hint = self.z_from_x(x) # experiment code: *b**
-        guided_hint = diffusion_model.input_blocks[0](x, emb, context) # experiment code: *c**
+        # guided_hint = diffusion_model.input_blocks[0](x, emb, context) # experiment code: *c**
         
         z_next = self.gru(guided_hint, z_cond)
         
