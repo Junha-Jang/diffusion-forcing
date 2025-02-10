@@ -53,6 +53,8 @@ class DiffusionTransitionModel(nn.Module):
         self.network_size = cfg.network_size
         self.return_all_timesteps = cfg.return_all_timesteps
 
+        self.exp_code = cfg.exp_code
+
         if self.objective not in ["pred_noise", "pred_x0", "pred_v"]:
             raise ValueError("objective must be either pred_noise or pred_x0 or pred_v ")
 
@@ -99,7 +101,11 @@ class DiffusionTransitionModel(nn.Module):
                 ResBlock2d(x_channel, z_channel),
                 nn.Conv2d(z_channel, z_channel, 1, padding=0),
             )
-            self.gru = Conv2dGRUCell(z_channel, z_channel)
+
+            if self.exp_code[1] == 'a' or self.exp_code[1] == 'b' or self.exp_code[1] == 'c' or self.exp_code[1] == 'd' or self.exp_code[1] == 'h':
+                self.gru = Conv2dGRUCell(z_channel, z_channel) # experiment code: *a**, *b**, *c**, *d**, ah**
+            else:
+                self.gru = Conv2dGRUCell(x_channel, z_channel) # experiment code: *e**, af**, ag**
             # self.c_from_z = nn.Sequential(
             #     ResBlock2d(z_channel, x_channel),
             #     nn.Conv2d(x_channel, x_channel, 1, padding=0),
@@ -339,18 +345,23 @@ class DiffusionTransitionModel(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
+    # def model_predictions(self, x, t, z_cond, external_cond=None, x_self_cond=None):
     def model_predictions(self, x, c_next, t, z_cond, external_cond=None, x_self_cond=None):
     # def model_predictions(self, x, z, t, c, external_cond=None, x_self_cond=None):
     # def model_predictions(self, z, t, c, external_cond=None, x_self_cond=None):
         control_ldm_model = self.model.model
         control_model = control_ldm_model.control_model
         diffusion_model = control_ldm_model.model.diffusion_model
+        first_stage_model = control_ldm_model.first_stage_model
     
         prompt='minecraft screenshot'
         a_prompt='best quality, extremely detailed'
         num_samples=x.shape[0]
 
-        c_concat = [c_next]
+        if self.exp_code[1] == 'a':
+            c_concat = [c_next] # experiment code: *a**
+        elif self.exp_code[1] == 'd':
+            c_concat = [control_ldm_model.decode_first_stage(x)] # experiment code: *d**
         c_crossattn = [control_ldm_model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
 
         # Reference 1: algorithms/controlnet/cldm/cldm.py - ControlLDM apply_model
@@ -358,20 +369,28 @@ class DiffusionTransitionModel(nn.Module):
         t_emb = timestep_embedding(t, control_model.model_channels, repeat_only=False)
         emb = control_model.time_embed(t_emb)
 
-        hint = torch.cat(c_concat, 1)
+        if self.exp_code[1] == 'a' or self.exp_code[1] == 'd':
+            hint = torch.cat(c_concat, 1) # experiment code: *a**, *d**
         context = torch.cat(c_crossattn, 1)
         
-        guided_hint = control_model.input_hint_block(hint, emb, context) # experiment code: *a**
-        # guided_hint = self.z_from_x(x) # experiment code: *b**
-        # guided_hint = diffusion_model.input_blocks[0](x, emb, context) # experiment code: *c**
+        if self.exp_code[1] == 'a' or self.exp_code[1] == 'd':
+            guided_hint = control_model.input_hint_block(hint, emb, context) # experiment code: *a**, *d**
+        elif self.exp_code[1] == 'b':
+            guided_hint = self.z_from_x(x) # experiment code: *b**
+        elif self.exp_code[1] == 'c':
+            guided_hint = diffusion_model.input_blocks[1](x, emb, context) # experiment code: *c**
+        elif self.exp_code[1] == 'e':
+            guided_hint = x # experiment code: *e**
         
-        z_next = self.gru(guided_hint, z_cond)
+        if self.exp_code[1] == 'a' or self.exp_code[1] == 'b' or self.exp_code[1] == 'c' or self.exp_code[1] == 'd' or self.exp_code[1] == 'e':
+            z_next = self.gru(guided_hint, z_cond) # experiment code: *a**, *b**, *c**, *d**, *e**
         
         cond = {
             "c_concat": c_concat,
             "c_crossattn": c_crossattn,
-            "guided_hint": z_cond # experiment code: a***
+            # "guided_hint": z_cond # experiment code: a***
             # "guided_hint": z_next # experiment code: b***
+            "guided_hint": z_cond if self.exp_code[0] == 'a' else z_next
         }
         
         model_output = self.model.model.apply_model(x, t, cond)
@@ -389,11 +408,21 @@ class DiffusionTransitionModel(nn.Module):
             v = model_output
             x_start = self.predict_start_from_v(x, t, v)
             pred_noise = self.predict_noise_from_start(x, t, x_start)
+        
+        if self.exp_code[1] == 'f':
+            guided_hint = v # experiment code: af**
+        elif self.exp_code[1] == 'g':
+            guided_hint = x_start # experiment code: ag**
+        elif self.exp_code[1] == 'h':
+            guided_hint = control_model.input_hint_block(control_ldm_model.decode_first_stage(x_start), emb, context) # experiment code: ah**
+        
+        if self.exp_code[1] == 'f' or self.exp_code[1] == 'g' or self.exp_code[1] == 'h':
+            z_next = self.gru(guided_hint, z_cond) # experiment code: af**, ag**, ah**
 
         return ModelPrediction(pred_noise, x_start, z_next, model_output)
 
-    def p_mean_variance(self, x, t, z_cond, external_cond=None, x_self_cond=None):
-        model_pred = self.model_predictions(x, t, z_cond, external_cond=external_cond, x_self_cond=x_self_cond)
+    def p_mean_variance(self, x, c_next, t, z_cond, external_cond=None, x_self_cond=None):
+        model_pred = self.model_predictions(x, c_next, t, z_cond, external_cond=external_cond, x_self_cond=x_self_cond)
         x_start = model_pred.pred_x_start
         pred_z = model_pred.pred_z
 
@@ -456,7 +485,7 @@ class DiffusionTransitionModel(nn.Module):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
             self_cond = x_start if self.self_condition else None
             model_pred = self.model_predictions(
-                x, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond
+                x, c_next, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond
             )
             pred_noise, x_start, pred_z, _ = model_pred
 
@@ -492,6 +521,7 @@ class DiffusionTransitionModel(nn.Module):
         )
 
     def ddim_sample_step(
+        # self, x, z_cond, external_cond=None, index=0, return_x_start=False, return_guidance_const=False
         self, x, c_next, z_cond, external_cond=None, index=0, return_x_start=False, return_guidance_const=False
     ):
         if index == 0:
@@ -515,6 +545,7 @@ class DiffusionTransitionModel(nn.Module):
         time, time_next = time_pairs[index]
         time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
         self_cond = None
+        # model_pred = self.model_predictions(x, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond)
         model_pred = self.model_predictions(x, c_next, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond)
         pred_noise = model_pred.pred_noise
         x_start = model_pred.pred_x_start
