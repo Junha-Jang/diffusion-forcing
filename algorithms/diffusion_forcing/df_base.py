@@ -198,6 +198,10 @@ class DiffusionForcingBase(BasePytorchAlgo):
             # x = self.transition_model.model.model.first_stage_model.encode(xs[t]).sample()
             model = self.transition_model.model.model
             x = model.get_first_stage_encoding(model.encode_first_stage(xs[t]))
+            
+            # x = rearrange(xs[t], "b (fs c) ... -> (b fs) c ...", fs=self.frame_stack)
+            # x = model.get_first_stage_encoding(model.encode_first_stage(x))
+            # x = rearrange(x, "(b fs) c ... -> b (fs c) ...", fs=self.frame_stack)
 
             # z_next, x_next_pred, l, cum_snr = self.transition_model(
             #     z, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
@@ -205,11 +209,17 @@ class DiffusionForcingBase(BasePytorchAlgo):
             z_next, x_next_pred, l, cum_snr = self.transition_model(
                 z, x, xs[t], conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
             )
+            # z_next, x_next_pred, l, cum_snr = self.transition_model(
+            #     z, x, conditions[t], deterministic_t=deterministic_t, cum_snr=cum_snr
+            # )
 
             # print("DiffusionForcingBase - Training Step")
             # x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
             # x_next_pred = self.transition_model.model.model.first_stage_model.decode(x_next_pred)
+
+            # x_next_pred = rearrange(x_next_pred, "b (fs c) ... -> (b fs) c ...", fs=self.frame_stack)
             x_next_pred = model.decode_first_stage(x_next_pred)
+            # x_next_pred = rearrange(x_next_pred, "(b fs) c ... -> b (fs c) ...", fs=self.frame_stack)
 
             z = z_next
             xs_pred.append(x_next_pred)
@@ -264,6 +274,7 @@ class DiffusionForcingBase(BasePytorchAlgo):
 
             # z, x_next_pred, _, _ = self.transition_model(z, xs[t], conditions[t], deterministic_t=0)
             z, x_next_pred, _, _ = self.transition_model(z, x, xs[t], conditions[t], deterministic_t=0)
+            # z, x_next_pred, _, _ = self.transition_model(z, x, conditions[t], deterministic_t=0)
 
             # x_next_pred = self.transition_model.model.model.decode_first_stage(x_next_pred)
             # x_next_pred = model.decode_first_stage(x_next_pred)
@@ -277,8 +288,8 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 horizon = n_frames - len(xs_pred)
 
             chunk = [
-                # torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
-                torch.randn((batch_size, 4, 16, 16), device=self.device) for _ in range(horizon)
+                torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
+                # torch.randn((batch_size, 4, 16, 16), device=self.device) for _ in range(horizon)
             ]
 
             pyramid_height = self.sampling_timesteps + int(horizon * self.uncertainty_scale)
@@ -296,11 +307,12 @@ class DiffusionForcingBase(BasePytorchAlgo):
                 for t in range(horizon):
                     i = min(pyramid[m, t], self.sampling_timesteps - 1)
 
-                    c_next = model.decode_first_stage(xs_pred[t])
+                    c_next = model.decode_first_stage(chunk[t])
                     # print("chunk[t].shape: ", chunk[t].shape)
                     # print("c_next.shape: ", c_next.shape)
                     # print("z_chunk.shape: ", z_chunk.shape)
                     chunk[t], z_chunk = self.transition_model.ddim_sample_step(
+                        # chunk[t], z_chunk, conditions[len(xs_pred) + t], i
                         chunk[t], c_next, z_chunk, conditions[len(xs_pred) + t], i
                     )
 
