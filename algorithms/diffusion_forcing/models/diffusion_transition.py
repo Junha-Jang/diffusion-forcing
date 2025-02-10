@@ -362,6 +362,8 @@ class DiffusionTransitionModel(nn.Module):
             c_concat = [c_next] # experiment code: *a**
         elif self.exp_code[1] == 'd':
             c_concat = [control_ldm_model.decode_first_stage(x)] # experiment code: *d**
+        else:
+            c_concat = [None]
         c_crossattn = [control_ldm_model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]
 
         # Reference 1: algorithms/controlnet/cldm/cldm.py - ControlLDM apply_model
@@ -378,7 +380,7 @@ class DiffusionTransitionModel(nn.Module):
         elif self.exp_code[1] == 'b':
             guided_hint = self.z_from_x(x) # experiment code: *b**
         elif self.exp_code[1] == 'c':
-            guided_hint = diffusion_model.input_blocks[1](x, emb, context) # experiment code: *c**
+            guided_hint = diffusion_model.input_blocks[0](x, emb, context) # experiment code: *c**
         elif self.exp_code[1] == 'e':
             guided_hint = x # experiment code: *e**
         
@@ -485,7 +487,7 @@ class DiffusionTransitionModel(nn.Module):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
             self_cond = x_start if self.self_condition else None
             model_pred = self.model_predictions(
-                x, c_next, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond
+                x, time_cond, z_cond, external_cond=external_cond, x_self_cond=self_cond
             )
             pred_noise, x_start, pred_z, _ = model_pred
 
