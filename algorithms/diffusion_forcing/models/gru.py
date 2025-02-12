@@ -27,7 +27,7 @@ class ConvRNNCell(nn.Module):
                              padding=self.padding,
                              bias=bias)
 
-        self.h2h = nn.Conv2d(in_channels=in_channels,
+        self.h2h = nn.Conv2d(in_channels=hidden_channels,
                              out_channels=hidden_channels * channel_multiplier,
                              kernel_size=self.kernel_size,
                              padding=self.padding,
