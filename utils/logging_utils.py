@@ -94,8 +94,11 @@ def get_validation_metrics_for_videos(
     output_dict = {}
     observation_gt = observation_gt.type_as(observation_hat)  # some metrics don't fully support fp16
 
+    # frame >= 9 for FVD
+
     if fvd_model is not None:
-        output_dict["fvd"] = fvd_model.compute(observation_hat, observation_gt)
+        # output_dict["fvd"] = fvd_model.compute(observation_hat, observation_gt)
+        output_dict["fvd"] = fvd_model.compute(observation_hat.cuda(), observation_gt.cuda())
 
     # reshape to (frame * batch, channel, height, width) for image losses
     observation_hat = observation_hat.view(-1, channel, height, width)

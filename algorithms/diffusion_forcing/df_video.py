@@ -7,6 +7,7 @@ from .df_base import DiffusionForcingBase
 from algorithms.common.metrics import (
     FrechetInceptionDistance,
     LearnedPerceptualImagePatchSimilarity,
+    FrechetVideoDistance
 )
 
 from utils.logging_utils import log_video, get_validation_metrics_for_videos
@@ -23,7 +24,7 @@ class DiffusionForcingVideo(DiffusionForcingBase):
             self.validation_fid_model = None
             self.validation_lpips_model = None
 
-        self.validation_fvd_model = None  # FrechetVideoDistance()
+        self.validation_fvd_model = None # FrechetVideoDistance()
 
     def training_step(self, batch, batch_idx):
         # if batch_idx == 0:
@@ -42,6 +43,15 @@ class DiffusionForcingVideo(DiffusionForcingBase):
         return output_dict
 
     def on_validation_epoch_end(self, namespace="validation"):
+        # if self.validation_fid_model is None:
+        #     self.validation_fid_model = FrechetInceptionDistance(feature=64)
+        # if self.validation_lpips_model is None:
+        #     self.validation_lpips_model = LearnedPerceptualImagePatchSimilarity()
+        
+        # if want svd...
+        if self.validation_fvd_model is None:
+            self.validation_fvd_model = FrechetVideoDistance().to(self.device)
+
         if not self.validation_step_outputs:
             return
 
