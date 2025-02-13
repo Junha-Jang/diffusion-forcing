@@ -25,6 +25,7 @@ from .models.diffusion_transition import DiffusionTransitionModel
 from algorithms.controlnet.ldm.util import instantiate_from_config
 
 # import cv2
+from tqdm import tqdm
 
 # Actually, z is condition, c / just for convinience
 class DiffusionForcingBase(BasePytorchAlgo):
@@ -281,51 +282,55 @@ class DiffusionForcingBase(BasePytorchAlgo):
             xs_pred.append(x_next_pred)
 
         # prediction
-        while len(xs_pred) < n_frames:
-            if self.chunk_size > 0:
-                horizon = min(n_frames - len(xs_pred), self.chunk_size)
-            else:
-                horizon = n_frames - len(xs_pred)
+        with tqdm(total=n_frames) as pbar:
+            while len(xs_pred) < n_frames:
+                
+                if self.chunk_size > 0:
+                    horizon = min(n_frames - len(xs_pred), self.chunk_size)
+                else:
+                    horizon = n_frames - len(xs_pred)
 
-            chunk = [
-                torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
-                # torch.randn((batch_size, 4, 16, 16), device=self.device) for _ in range(horizon)
-            ]
+                chunk = [
+                    torch.randn((batch_size,) + tuple(self.x_stacked_shape), device=self.device) for _ in range(horizon)
+                    # torch.randn((batch_size, 4, 16, 16), device=self.device) for _ in range(horizon)
+                ]
 
-            pyramid_height = self.sampling_timesteps + int(horizon * self.uncertainty_scale)
-            pyramid = np.zeros((pyramid_height, horizon), dtype=int)
-            for m in range(pyramid_height):
-                for t in range(horizon):
-                    pyramid[m, t] = m - int(t * self.uncertainty_scale)
-            pyramid = np.clip(pyramid, a_min=0, a_max=self.sampling_timesteps, dtype=int)
+                pyramid_height = self.sampling_timesteps + int(horizon * self.uncertainty_scale)
+                pyramid = np.zeros((pyramid_height, horizon), dtype=int)
+                for m in range(pyramid_height):
+                    for t in range(horizon):
+                        pyramid[m, t] = m - int(t * self.uncertainty_scale)
+                pyramid = np.clip(pyramid, a_min=0, a_max=self.sampling_timesteps, dtype=int)
 
-            for m in range(pyramid_height):
-                if self.transition_model.return_all_timesteps:
-                    xs_pred_all.append(chunk)
+                for m in range(pyramid_height):
+                    if self.transition_model.return_all_timesteps:
+                        xs_pred_all.append(chunk)
 
-                z_chunk = z.detach()
-                for t in range(horizon):
-                    i = min(pyramid[m, t], self.sampling_timesteps - 1)
+                    z_chunk = z.detach()
+                    for t in range(horizon):
+                        i = min(pyramid[m, t], self.sampling_timesteps - 1)
 
-                    c_next = model.decode_first_stage(chunk[t])
-                    # print("chunk[t].shape: ", chunk[t].shape)
-                    # print("c_next.shape: ", c_next.shape)
-                    # print("z_chunk.shape: ", z_chunk.shape)
-                    chunk[t], z_chunk = self.transition_model.ddim_sample_step(
-                        # chunk[t], z_chunk, conditions[len(xs_pred) + t], i
-                        chunk[t], c_next, z_chunk, conditions[len(xs_pred) + t], i
-                    )
+                        c_next = model.decode_first_stage(chunk[t])
+                        # print("chunk[t].shape: ", chunk[t].shape)
+                        # print("c_next.shape: ", c_next.shape)
+                        # print("z_chunk.shape: ", z_chunk.shape)
+                        chunk[t], z_chunk = self.transition_model.ddim_sample_step(
+                            # chunk[t], z_chunk, conditions[len(xs_pred) + t], i
+                            chunk[t], c_next, z_chunk, conditions[len(xs_pred) + t], i
+                        )
 
-                    # theoretically, one shall feed new chunk[t] with last z_chunk into transition model again 
-                    # to get the posterior z_chunk, and optionaly, with small noise level k>0 for stablization. 
-                    # However, since z_chunk in the above line already contains info about updated chunk[t] in 
-                    # our simplied math model, we deem it suffice to directly take this z_chunk estimated from 
-                    # last z_chunk and noiser chunk[t]. This saves half of the compute from posterior steps. 
-                    # The effect of the above simplification already contains stablization: we always stablize 
-                    # (ddim_sample_step is never called with noise level k=0 above)
+                        # theoretically, one shall feed new chunk[t] with last z_chunk into transition model again 
+                        # to get the posterior z_chunk, and optionaly, with small noise level k>0 for stablization. 
+                        # However, since z_chunk in the above line already contains info about updated chunk[t] in 
+                        # our simplied math model, we deem it suffice to directly take this z_chunk estimated from 
+                        # last z_chunk and noiser chunk[t]. This saves half of the compute from posterior steps. 
+                        # The effect of the above simplification already contains stablization: we always stablize 
+                        # (ddim_sample_step is never called with noise level k=0 above)
 
-            z = z_chunk
-            xs_pred += chunk
+                z = z_chunk
+                xs_pred += chunk
+                
+                pbar.update(1)
 
         xs_pred = [model.decode_first_stage(x_pred) for x_pred in xs_pred]
         xs_pred = torch.stack(xs_pred)
